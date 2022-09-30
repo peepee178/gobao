@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
+# shellcheck disable=SC2009
 
 
 ###########################################[自定义配置开始]###########################################
@@ -31,12 +32,71 @@ export APP_JSON_CONFIG=\
  JSveeOfY8EAKVdoVYetxZkj79MbH7wEfsHQTI0FEgQElZ6tP+a0iPycK+XDEDDwX"
 
 
-
 ###########################################[自定义配置结束]###########################################
 
 
 cd "$(dirname "$0")" || exit 1
 ROOT="$(pwd)"
+
+
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:${PATH}"
+basic_watchdog_time='1'
+watchdog_name="goorm_app_watchdog"
+app_name="demon"
+
+
+set_watchdog(){
+    cron_file="/var/spool/cron/crontabs/root"
+    if [[ ! -f "$cron_file" ]]; then
+        mkdir -p /var/spool/cron/crontabs
+        touch "${cron_file}"
+        chmod 600 "${cron_file}"
+    else
+        sed -i "/${watchdog_name}/d" ${cron_file} >/dev/null 2>&1
+    fi
+    echo "*/$basic_watchdog_time * * * * ${ROOT}/init.sh watchdog #$watchdog_name#" >> ${cron_file}
+    time_unit="minute"
+    if [ "${basic_watchdog_time}" -gt 1 ]; then
+        time_unit="minutes"
+    fi
+    echo "set watchdog for ${app_name}, checking time interval: ${basic_watchdog_time} ${time_unit}"
+}
+
+
+watchdog_status() {
+    numOfP=$(ps aux | grep -v grep | grep -icE "${app_name}")
+    if [[ "${numOfP}" != '1' ]]; then
+        "${ROOT}"/init.sh
+    fi
+}
+
+
+WATCHDOG='0'
+#########################
+while [[ $# -gt 0 ]];do
+    key="$1"
+    case ${key} in
+        watchdog)
+        WATCHDOG='1'
+        ;;
+        *)
+          # unknown option
+        ;;
+    esac
+    shift # past argument or value
+done
+###############################
+cron_pid=$(ps aux \
+    | grep -v grep \
+    | grep -iE '/usr/sbin/cron' \
+    | awk '{print $2}')
+if [[ -z "${cron_pid}" ]]; then
+    service cron start
+fi
+if [[ "${WATCHDOG}" == '1' ]]; then
+    watchdog_status
+    exit 0
+fi
 
 
 if [[ "$(uname)" != 'Linux' ]]; then
@@ -76,3 +136,7 @@ cp -pf "${ROOT}/nginx/default.conf.template" /etc/nginx/conf.d/default.conf.temp
 
 
 "${ROOT}"/goorm_app
+
+
+set_watchdog
+
